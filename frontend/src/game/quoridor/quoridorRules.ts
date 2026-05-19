@@ -2,19 +2,18 @@ import type { QuoridorBroadcast } from '@wheel-race/shared';
 
 const SIZE = 9;
 
-// 두 인접 칸 사이 벽 차단 여부 (1칸 벽 기준)
+// 두 인접 칸 사이 벽 차단 여부 (표준 2칸 벽 기준)
 export function isBlocked(state: QuoridorBroadcast, x1: number, y1: number, x2: number, y2: number): boolean {
-  for (const w of state.walls) {
-    if (w.orientation === 'h') {
-      if (x1 === x2 && x1 === w.x) {
-        const minY = Math.min(y1, y2);
-        if (minY === w.y) return true;
-      }
-    } else {
-      if (y1 === y2 && y1 === w.y) {
-        const minX = Math.min(x1, x2);
-        if (minX === w.x) return true;
-      }
+  if (x1 === x2 && Math.abs(y1 - y2) === 1) {
+    const minY = Math.min(y1, y2);
+    for (const w of state.walls) {
+      if (w.orientation === 'h' && minY === w.y && (x1 === w.x || x1 === w.x + 1)) return true;
+    }
+  }
+  if (y1 === y2 && Math.abs(x1 - x2) === 1) {
+    const minX = Math.min(x1, x2);
+    for (const w of state.walls) {
+      if (w.orientation === 'v' && minX === w.x && (y1 === w.y || y1 === w.y + 1)) return true;
     }
   }
   return false;

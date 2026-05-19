@@ -108,21 +108,32 @@ function neighbors(x: number, y: number, walls: QuoridorWallSim[]): [number, num
 }
 
 function isBlocked(x1: number, y1: number, x2: number, y2: number, walls: QuoridorWallSim[]): boolean {
-  // 1칸 벽: orientation 'h' → (x, y)와 (x, y+1) 사이 차단 / 'v' → (x, y)와 (x+1, y) 사이 차단
-  for (const w of walls) {
-    if (w.orientation === 'h') {
-      if (x1 === x2 && x1 === w.x) {
-        const minY = Math.min(y1, y2);
-        if (minY === w.y) return true;
-      }
-    } else {
-      if (y1 === y2 && y1 === w.y) {
-        const minX = Math.min(x1, x2);
-        if (minX === w.x) return true;
-      }
+  // 표준 쿼리도 2칸 벽
+  // 가로 벽 (x, y, 'h'): 행 y와 y+1 사이를 칸 (x, *)와 (x+1, *) 두 위치에서 차단
+  // 세로 벽 (x, y, 'v'): 열 x와 x+1 사이를 칸 (*, y)와 (*, y+1) 두 위치에서 차단
+  if (x1 === x2 && Math.abs(y1 - y2) === 1) {
+    const minY = Math.min(y1, y2);
+    for (const w of walls) {
+      if (w.orientation === 'h' && minY === w.y && (x1 === w.x || x1 === w.x + 1)) return true;
+    }
+  }
+  if (y1 === y2 && Math.abs(x1 - x2) === 1) {
+    const minX = Math.min(x1, x2);
+    for (const w of walls) {
+      if (w.orientation === 'v' && minX === w.x && (y1 === w.y || y1 === w.y + 1)) return true;
     }
   }
   return false;
+}
+
+// 두 벽이 겹치거나 교차하는지 (표준 쿼리도)
+function wallConflicts(a: QuoridorWallSim, b: { x: number; y: number; orientation: 'h' | 'v' }): boolean {
+  if (a.orientation === b.orientation) {
+    if (a.orientation === 'h') return a.y === b.y && Math.abs(a.x - b.x) <= 1;
+    return a.x === b.x && Math.abs(a.y - b.y) <= 1;
+  }
+  // 가로 ↔ 세로 교차 (같은 격자점 중심)
+  return a.x === b.x && a.y === b.y;
 }
 
 // 액션 적용 (유효성 체크 포함)
@@ -207,19 +218,13 @@ export function tryWall(
   const pawn = game.pawns.find((p) => p.side === side);
   if (!pawn) return { ok: false, reason: 'no pawn', game };
   if (pawn.walls <= 0) return { ok: false, reason: 'no walls left', game };
-  // 범위 — 1칸 벽: h는 y가 0~7, v는 x가 0~7
-  if (orientation === 'h') {
-    if (x < 0 || x >= SIZE || y < 0 || y >= SIZE - 1) {
-      return { ok: false, reason: 'out of range', game };
-    }
-  } else {
-    if (x < 0 || x >= SIZE - 1 || y < 0 || y >= SIZE) {
-      return { ok: false, reason: 'out of range', game };
-    }
+  // 범위 — 표준 2칸 벽: x ∈ [0, 7], y ∈ [0, 7]
+  if (x < 0 || x >= SIZE - 1 || y < 0 || y >= SIZE - 1) {
+    return { ok: false, reason: 'out of range', game };
   }
-  // 겹침
-  if (game.walls.some((w) => w.x === x && w.y === y && w.orientation === orientation)) {
-    return { ok: false, reason: 'overlap', game };
+  // 겹침 + 교차 (가로↔세로 십자 + 같은 방향 인접) 모두 거부
+  if (game.walls.some((w) => wallConflicts(w, { x, y, orientation }))) {
+    return { ok: false, reason: 'overlap or cross', game };
   }
   // 모든 말이 도달 가능한지
   const candidateWalls = [...game.walls, { x, y, orientation, ownerSide: side }];

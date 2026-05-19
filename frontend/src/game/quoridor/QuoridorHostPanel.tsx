@@ -260,13 +260,13 @@ function WallClickMap({
       ctx.beginPath(); ctx.moveTo(ox + i * cell, oy); ctx.lineTo(ox + i * cell, oy + boardPx); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(ox, oy + i * cell); ctx.lineTo(ox + boardPx, oy + i * cell); ctx.stroke();
     }
-    // 기존 벽
+    // 기존 벽 (2칸)
     for (const w of state.walls) {
       ctx.fillStyle = '#8B4513';
       if (w.orientation === 'h') {
-        ctx.fillRect(ox + w.x * cell + 2, oy + (w.y + 1) * cell - 3, cell - 4, 6);
+        ctx.fillRect(ox + w.x * cell + 2, oy + (w.y + 1) * cell - 3, cell * 2 - 4, 6);
       } else {
-        ctx.fillRect(ox + (w.x + 1) * cell - 3, oy + w.y * cell + 2, 6, cell - 4);
+        ctx.fillRect(ox + (w.x + 1) * cell - 3, oy + w.y * cell + 2, 6, cell * 2 - 4);
       }
     }
     // 말
@@ -278,12 +278,12 @@ function WallClickMap({
       ctx.arc(ox + p.x * cell + cell / 2, oy + p.y * cell + cell / 2, cell * 0.3, 0, Math.PI * 2);
       ctx.fill();
     }
-    // 선택된 벽 미리보기
+    // 선택된 벽 미리보기 (2칸)
     ctx.fillStyle = '#e94560';
     if (selected.orientation === 'h') {
-      ctx.fillRect(ox + selected.x * cell + 2, oy + (selected.y + 1) * cell - 4, cell - 4, 8);
+      ctx.fillRect(ox + selected.x * cell + 2, oy + (selected.y + 1) * cell - 4, cell * 2 - 4, 8);
     } else {
-      ctx.fillRect(ox + (selected.x + 1) * cell - 4, oy + selected.y * cell + 2, 8, cell - 4);
+      ctx.fillRect(ox + (selected.x + 1) * cell - 4, oy + selected.y * cell + 2, 8, cell * 2 - 4);
     }
   }, [state, selected]);
 
@@ -297,28 +297,25 @@ function WallClickMap({
     const boardPx = SZ - 2 * m;
     const cell = boardPx / SIZE;
     const ox = m, oy = m;
-    // 가장 가까운 unit edge 찾기
-    let bestD = Infinity;
-    let best: { x: number; y: number; o: 'h' | 'v' } | null = null;
-    // 가로 벽 후보: (x, y, 'h'), x ∈ [0, 8], y ∈ [0, 7], 중심 = (x + 0.5, y + 1)
-    for (let x = 0; x < SIZE; x++) {
-      for (let y = 0; y < SIZE - 1; y++) {
-        const ex = ox + (x + 0.5) * cell;
-        const ey = oy + (y + 1) * cell;
-        const d = Math.hypot(mx - ex, my - ey);
-        if (d < bestD) { bestD = d; best = { x, y, o: 'h' }; }
-      }
+    // 가장 가까운 가로 격자선 / 세로 격자선 거리 비교 → 벽 방향 결정
+    let bestHy = 0, bestHd = Infinity;
+    let bestVx = 0, bestVd = Infinity;
+    for (let i = 0; i < SIZE - 1; i++) {
+      const dH = Math.abs(my - (oy + (i + 1) * cell));
+      if (dH < bestHd) { bestHd = dH; bestHy = i; }
+      const dV = Math.abs(mx - (ox + (i + 1) * cell));
+      if (dV < bestVd) { bestVd = dV; bestVx = i; }
     }
-    // 세로 벽 후보: (x, y, 'v'), x ∈ [0, 7], y ∈ [0, 8], 중심 = (x + 1, y + 0.5)
-    for (let x = 0; x < SIZE - 1; x++) {
-      for (let y = 0; y < SIZE; y++) {
-        const ex = ox + (x + 1) * cell;
-        const ey = oy + (y + 0.5) * cell;
-        const d = Math.hypot(mx - ex, my - ey);
-        if (d < bestD) { bestD = d; best = { x, y, o: 'v' }; }
-      }
+    let best: { x: number; y: number; o: 'h' | 'v' };
+    if (bestHd < bestVd) {
+      // 가로 벽 (h) — y = bestHy, x는 클릭에 가장 가까운 칸 (0~SIZE-2)
+      const xw = Math.max(0, Math.min(SIZE - 2, Math.round((mx - ox) / cell) - 1));
+      best = { x: xw, y: bestHy, o: 'h' };
+    } else {
+      const yw = Math.max(0, Math.min(SIZE - 2, Math.round((my - oy) / cell) - 1));
+      best = { x: bestVx, y: yw, o: 'v' };
     }
-    if (best) onSelect(best.x, best.y, best.o);
+    onSelect(best.x, best.y, best.o);
   }
 
   return (

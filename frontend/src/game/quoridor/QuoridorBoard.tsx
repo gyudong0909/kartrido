@@ -112,16 +112,14 @@ function draw(ctx: CanvasRenderingContext2D, W: number, H: number, state: Quorid
     ctx.stroke();
   }
 
-  // 설치된 벽 (1칸 길이)
+  // 설치된 벽 (표준 2칸 길이)
   if (state) {
     for (const w of state.walls) {
       ctx.fillStyle = '#8B4513';
       if (w.orientation === 'h') {
-        // (w.x, w.y)와 (w.x, w.y+1) 사이 가로벽
-        ctx.fillRect(ox + w.x * cell + 2, oy + (w.y + 1) * cell - 4, cell - 4, 8);
+        ctx.fillRect(ox + w.x * cell + 2, oy + (w.y + 1) * cell - 4, cell * 2 - 4, 8);
       } else {
-        // (w.x, w.y)와 (w.x+1, w.y) 사이 세로벽
-        ctx.fillRect(ox + (w.x + 1) * cell - 4, oy + w.y * cell + 2, 8, cell - 4);
+        ctx.fillRect(ox + (w.x + 1) * cell - 4, oy + w.y * cell + 2, 8, cell * 2 - 4);
       }
     }
   }
