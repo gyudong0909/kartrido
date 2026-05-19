@@ -1,0 +1,23 @@
+{
+  "name": "@wheel-race/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@wheel-race/shared": "*",
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "nanoid": "^5.0.7"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
