@@ -274,9 +274,10 @@ function runRound(code: string) {
   }
   broadcastState(code);
 
-  // 한 차라도 finished면 자동 종료
+  // 한 차라도 finished거나 15라운드 완료면 자동 종료
   const anyFinished = updated.cars.some((c) => c.finished);
-  if (anyFinished) {
+  const maxRoundReached = updated.round >= 15;
+  if (anyFinished || maxRoundReached) {
     setTimeout(() => {
       updated.finished = true;
       room.phase = 'kartrido-end';
@@ -300,7 +301,7 @@ function broadcastKartridoResults(code: string) {
   const guesses = mission7Guesses.get(code) ?? new Map();
   // 꼴찌팀 미션7 보유자가 미션8을 정확히 맞혔는지
   let m7HitM8 = false;
-  const ranking = finalRanking(game);
+  const ranking = finalRanking(game, room?.slots ?? []);
   const lastTeam = ranking[ranking.length - 1];
   for (const slot of room.slots) {
     if (game.missions[slot.slotToken] === 7 && slot.team === lastTeam) {
@@ -473,7 +474,7 @@ io.on('connection', (socket) => {
       game = createKartridoGame();
       games.set(code, game);
     }
-    const ranking = finalRanking(game);
+    const ranking = finalRanking(game, room?.slots ?? []);
     const firstTeam = ranking[0];
     const lastTeam = ranking[ranking.length - 1];
     // 카트라이도 바퀴 위치 기준 매칭
@@ -567,6 +568,34 @@ io.on('connection', (socket) => {
     hist.push(snapshotQ(game));
     quoridorHistory.set(code, hist);
     advanceTurn(game);
+    broadcastQuoridorState(code);
+  });
+
+  socket.on('host:quoridor-set-walls', ({ code, hostToken, side, walls }) => {
+    const room = getRoom(code);
+    const game = quoridorGames.get(code);
+    if (!room || !game || room.hostToken !== hostToken) return;
+    const pawn = game.pawns.find((p) => p.side === side);
+    if (!pawn) return;
+    const hist = quoridorHistory.get(code) ?? [];
+    hist.push(snapshotQ(game));
+    quoridorHistory.set(code, hist);
+    pawn.walls = Math.max(0, Math.min(99, walls));
+    broadcastQuoridorState(code);
+  });
+
+  socket.on('host:quoridor-set-death', ({ code, hostToken, side, dead }) => {
+    const room = getRoom(code);
+    const game = quoridorGames.get(code);
+    if (!room || !game || room.hostToken !== hostToken) return;
+    const pawn = game.pawns.find((p) => p.side === side);
+    if (!pawn) return;
+    const hist = quoridorHistory.get(code) ?? [];
+    hist.push(snapshotQ(game));
+    quoridorHistory.set(code, hist);
+    pawn.finished = dead;
+    if (dead && !game.finishOrder.includes(side)) game.finishOrder.push(side);
+    if (!dead) game.finishOrder = game.finishOrder.filter((s) => s !== side);
     broadcastQuoridorState(code);
   });
 
@@ -683,6 +712,13 @@ io.on('connection', (socket) => {
     const room = getRoom(code);
     const game = games.get(code);
     if (!room || !game || room.hostToken !== hostToken) return;
+    // 종료 직전 스냅샷 push → undo로 input phase 복귀 가능
+    const hist = gameHistory.get(code) ?? [];
+    hist.push({
+      game: snapshot(game),
+      subs: JSON.parse(JSON.stringify(submissions.get(code) ?? [])),
+    });
+    gameHistory.set(code, hist);
     game.finished = true;
     room.phase = 'kartrido-end';
     io.to(`room:${code}`).emit('phase:changed', room.phase);

@@ -146,16 +146,24 @@ export default function QuoridorHostPanel({ code, hostToken }: Props) {
             </div>
             <div style={{ fontSize: 13, color: '#fff' }}>위치 ({p.x}, {p.y})</div>
             <div style={{ fontSize: 13, marginTop: 2 }}>목숨 <b style={{ color: '#ffd700' }}>{p.walls}/10</b></div>
-            {/* 위치 직접 조정 */}
-            <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+            <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 3 }}>
               <button onClick={() => {
-                const newX = prompt(`${SIDE_LABEL[p.side]} X (0~8)`, String(p.x));
-                const newY = prompt(`${SIDE_LABEL[p.side]} Y (0~8)`, String(p.y));
-                if (newX !== null && newY !== null) {
-                  socket.emit('host:quoridor-set-pos', { code, hostToken, side: p.side as any, x: +newX, y: +newY });
+                const nx = prompt(`X (0~8)`, String(p.x));
+                const ny = prompt(`Y (0~8)`, String(p.y));
+                if (nx !== null && ny !== null) {
+                  socket.emit('host:quoridor-set-pos', { code, hostToken, side: p.side as any, x: +nx, y: +ny });
                 }
-              }} style={{ flex: 1, fontSize: 10, padding: 4, background: '#444', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}>
-                📍 위치 수정
+              }} style={editBtn}>📍 위치</button>
+              <button onClick={() => {
+                const w = prompt(`벽 잔량 (0~99)`, String(p.walls));
+                if (w !== null) {
+                  socket.emit('host:quoridor-set-walls', { code, hostToken, side: p.side as any, walls: +w });
+                }
+              }} style={editBtn}>🧱 벽</button>
+              <button onClick={() => {
+                socket.emit('host:quoridor-set-death', { code, hostToken, side: p.side as any, dead: !p.finished });
+              }} style={{ ...editBtn, background: p.finished ? '#06d6a0' : '#aa4444' }}>
+                {p.finished ? '🪄 부활' : '💀 사망'}
               </button>
             </div>
           </div>
@@ -333,6 +341,11 @@ function WallClickMap({
     </div>
   );
 }
+
+const editBtn: React.CSSProperties = {
+  fontSize: 10, padding: 4, background: '#444', color: '#fff',
+  border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 'bold',
+};
 
 const smallBtn = (bg: string): React.CSSProperties => ({
   padding: '6px 12px', fontSize: 13, background: bg, color: '#fff',

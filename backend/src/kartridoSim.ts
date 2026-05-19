@@ -102,6 +102,8 @@ export interface CarSim {
   wheels: WheelMove[]; // 4개
   finished: boolean;
   stoppedByWall: boolean;
+  finishRound?: number;  // 도착한 라운드 번호
+  finishStep?: number;   // 그 라운드 내 step (0 ~ ANIM_STEPS-1)
 }
 
 export interface WallSim {
@@ -343,21 +345,22 @@ export function simulateRound(
         }
       }
     }
+    // 매 step 도착 체크 — 먼저 변에 닿은 차의 step 기록
+    for (const c of cars) {
+      if (c.finished) continue;
+      const [e1, e2] = targetEdge(c.team);
+      if (ptSegDist({ x: c.x, y: c.y }, e1, e2) <= CAR_R) {
+        c.finished = true;
+        c.finishStep = step;
+      }
+    }
     // 스냅샷
     for (let i = 0; i < cars.length; i++) {
       trajectory[i].push({ x: cars[i].x, y: cars[i].y, bodyAngle: cars[i].bodyAngle });
     }
   }
 
-  let finishedAny = false;
-  for (const c of cars) {
-    if (c.finished) continue;
-    const [e1, e2] = targetEdge(c.team);
-    if (ptSegDist({ x: c.x, y: c.y }, e1, e2) <= CAR_R) {
-      c.finished = true;
-      finishedAny = true;
-    }
-  }
+  const finishedAny = cars.some((c) => c.finished && c.finishStep !== undefined);
 
   for (const c of cars) c.stoppedByWall = false;
 

@@ -6,7 +6,7 @@ import {
 import {
   CarSim, WallSim, makeInitialCars, simulateRound,
   isValidWall, wallsOverlap, startPosition, targetEdge,
-  gridEdgeToWall,
+  gridEdgeToWall, CENTROID,
 } from './kartridoSim.js';
 
 // 라운드 입력 — 한 슬롯이 제출한 행동
@@ -187,9 +187,10 @@ export function processRound(
   game.cars = result.cars;
   (game as any).lastTrajectory = result.trajectory;
 
-  // 도착 순서 기록
+  // 도착 순서 기록 + finishRound 설정
   for (let i = 0; i < game.cars.length; i++) {
     if (!before[i] && game.cars[i].finished) {
+      game.cars[i].finishRound = game.round;
       game.finishOrder.push(game.cars[i].team);
     }
   }
@@ -198,34 +199,51 @@ export function processRound(
   // 자동 종료 비활성 — 호스트가 명시적으로 종료
   // (참고: result.finishedAny와 game.round >= TOTAL_ROUNDS 정보만 유지)
 
-  // 마지막 라운드면 제출 시각 기록
-  if (game.finished) {
-    for (const sub of submissions) {
-      game.lastRoundSubmitTimes[sub.slotToken] = sub.submittedAt;
-    }
+  // 매 라운드 슬롯별 제출 시각 기록 (tie-break용 — 항상 갱신)
+  for (const sub of submissions) {
+    game.lastRoundSubmitTimes[sub.slotToken] = sub.submittedAt;
   }
 
   return { game, finishedAny: result.finishedAny };
 }
 
 // ─── 최종 순위 산출 ────────────────────────
-export function finalRanking(game: KartridoGame): TeamColor[] {
-  // 도착한 차 우선, 도착 안 한 차는 목표까지 거리로 정렬
-  const distances = game.cars.map((c) => {
+// 슬롯 인자 받아 평균 제출시각 tie-break 가능
+export function finalRanking(game: KartridoGame, slots?: PlayerSlot[]): TeamColor[] {
+  function avgTime(team: TeamColor): number {
+    if (!slots) return 0;
+    const teamSlots = slots.filter((s) => s.team === team);
+    let sum = 0, cnt = 0;
+    for (const s of teamSlots) {
+      const t = game.lastRoundSubmitTimes[s.slotToken];
+      if (t !== undefined) { sum += t; cnt++; }
+    }
+    return cnt > 0 ? sum / cnt : Infinity;
+  }
+  function dist(c: typeof game.cars[number]): number {
     const [e1, e2] = targetEdge(c.team);
-    // 거리 = 0 if finished
-    if (c.finished) return { team: c.team, dist: -1 };
-    const d = pointToSegDist(c.x, c.y, e1, e2);
-    return { team: c.team, dist: d };
-  });
+    return pointToSegDist(c.x, c.y, e1, e2);
+  }
 
-  // finished 순서 우선 + 나머지 거리순
-  const finishedTeams = game.finishOrder;
-  const unfinished = distances
-    .filter((d) => !finishedTeams.includes(d.team))
-    .sort((a, b) => a.dist - b.dist)
-    .map((d) => d.team);
-  return [...finishedTeams, ...unfinished];
+  const score = game.cars.map((c) => ({
+    team: c.team,
+    finishRound: c.finishRound ?? Infinity,
+    finishStep: c.finishStep ?? Infinity,
+    distToGoal: dist(c),
+    avg: avgTime(c.team),
+  }));
+
+  score.sort((a, b) => {
+    // 1. 도착한 차 우선 (finishRound 작은 게 위)
+    if (a.finishRound !== b.finishRound) return a.finishRound - b.finishRound;
+    // 2. 같은 라운드 도착 → step 작은 (먼저 닿은) 게 위
+    if (a.finishStep !== b.finishStep) return a.finishStep - b.finishStep;
+    // 3. 둘 다 미도착 → 거리 짧은 게 위
+    if (a.distToGoal !== b.distToGoal) return a.distToGoal - b.distToGoal;
+    // 4. 거리도 같음 → 평균 제출 시각 빠른 게 위
+    return a.avg - b.avg;
+  });
+  return score.map((s) => s.team);
 }
 
 function pointToSegDist(px: number, py: number, a: any, b: any) {
@@ -278,19 +296,18 @@ export function evaluateMissions(
 function evalLeftRight(game: KartridoGame, slot: PlayerSlot, m: 1 | 2): boolean {
   const car = game.cars.find((c) => c.team === slot.team)!;
   const sp = startPosition(slot.team);
-  // 진행 방향 = 시작 → 무게중심
-  const fwdX = -sp.x + 800; // CENTROID 대신 단순화 (중앙=800,475)
-  const fwdY = -sp.y + 475;
+  // 차의 초기 진행 방향 = 시작 → 무게중심
+  const fwdX = CENTROID.x - sp.x;
+  const fwdY = CENTROID.y - sp.y;
   const fwdLen = Math.hypot(fwdX, fwdY);
   const fdx = fwdX / fwdLen;
   const fdy = fwdY / fwdLen;
-  // 왼쪽 = 진행 방향에서 90° 반시계 회전
-  const leftX = -fdy;
-  const leftY = fdx;
-  // 차의 최종 위치를 시작점 기준 상대 좌표로
+  // 화면 좌표(y 아래로 증가)에서 진행 방향 기준 왼손 방향 = (fy, -fx)
+  const leftX = fdy;
+  const leftY = -fdx;
   const rx = car.x - sp.x;
   const ry = car.y - sp.y;
-  const leftCoord = rx * leftX + ry * leftY; // 양수면 왼쪽
+  const leftCoord = rx * leftX + ry * leftY; // 양수면 운전자 기준 왼쪽
   return m === 1 ? leftCoord > 0 : leftCoord < 0;
 }
 
@@ -331,37 +348,31 @@ export function computeNextMatchSlots(
 
 function evalFrontBack(game: KartridoGame, slot: PlayerSlot, m: 3 | 4): boolean {
   const car = game.cars.find((c) => c.team === slot.team)!;
-  const sp = startPosition(slot.team);
-  const fwdX = -sp.x + 800;
-  const fwdY = -sp.y + 475;
-  const fwdLen = Math.hypot(fwdX, fwdY);
-  const fdx = fwdX / fwdLen;
-  const fdy = fwdY / fwdLen;
+  // 자기 목표 변 — 4바퀴 각각이 이 변까지 떨어진 거리로 앞/뒤 판정
+  const [e1, e2] = targetEdge(slot.team);
 
-  // 4바퀴 각각의 절대 위치 (차 중심 + 차체 회전 적용한 바퀴 오프셋)
+  // 4바퀴 각각의 절대 위치 (차 중심 + 차체 회전 적용)
   const ba = (car.bodyAngle * Math.PI) / 180;
   const cb = Math.cos(ba), sb_ = Math.sin(ba);
   const wOffsets = [
     { x: 22, y: -14 }, { x: 22, y: 14 },
     { x: -22, y: -14 }, { x: -22, y: 14 },
   ];
-  const wheelFwdCoords = wOffsets.map((off) => {
+  const wheelDists = wOffsets.map((off) => {
     const wx = car.x + (off.x * cb - off.y * sb_);
     const wy = car.y + (off.x * sb_ + off.y * cb);
-    const rx = wx - sp.x;
-    const ry = wy - sp.y;
-    return rx * fdx + ry * fdy;
+    return pointToSegDist(wx, wy, e1, e2);
   });
-  // 슬롯이 어느 바퀴인지
+
   const wheelIdx = WHEEL_POS.indexOf(slot.wheel);
-  const myCoord = wheelFwdCoords[wheelIdx];
-  // 내림차순 정렬: [0]=맨 앞, [1]=2번째 앞, [2]=2번째 뒤, [3]=맨 뒤
-  const sorted = [...wheelFwdCoords].sort((a, b) => b - a);
+  const myDist = wheelDists[wheelIdx];
+  // 오름차순 정렬: [0]=목표에 가장 가까움 = 맨앞, [3]=가장 멈 = 맨뒤
+  const sorted = [...wheelDists].sort((a, b) => a - b);
   if (m === 3) {
-    // 앞쪽 2개 안에 들어가면 성공 (맨앞 또는 2번째 앞)
-    return myCoord >= sorted[1] - 0.01;
+    // 앞쪽 2개 (목표까지 거리 가장 가까운 2개)
+    return myDist <= sorted[1] + 0.01;
   } else {
-    // 뒤쪽 2개 안에 들어가면 성공 (맨뒤 또는 2번째 뒤)
-    return myCoord <= sorted[2] + 0.01;
+    // 뒤쪽 2개 (목표까지 거리 가장 먼 2개)
+    return myDist >= sorted[2] - 0.01;
   }
 }

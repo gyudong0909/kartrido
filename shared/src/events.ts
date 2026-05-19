@@ -79,6 +79,22 @@ export interface ClientToServerEvents {
     x: number;
     y: number;
   }) => void;
+
+  // 협동쿼리도 — 벽 잔량 강제 조정
+  'host:quoridor-set-walls': (data: {
+    code: string;
+    hostToken: string;
+    side: 'top' | 'bottom' | 'left' | 'right';
+    walls: number;
+  }) => void;
+
+  // 협동쿼리도 — 사망 여부 강제 조정
+  'host:quoridor-set-death': (data: {
+    code: string;
+    hostToken: string;
+    side: 'top' | 'bottom' | 'left' | 'right';
+    dead: boolean;
+  }) => void;
 }
 
 export type JoinResult =

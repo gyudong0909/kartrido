@@ -200,7 +200,10 @@ export default function HostConsole() {
               </>
             )}
             {phase === 'kartrido-end' && (
-              <button onClick={startQuoridor} style={bigBtn('#ffd700')}>▶ 협동 쿼리도 진행</button>
+              <>
+                <button onClick={startQuoridor} style={bigBtn('#ffd700')}>▶ 협동 쿼리도 진행</button>
+                <button onClick={undoRound} style={btnStyle('#aa6600')}>↶ 이전 라운드로 (종료 취소)</button>
+              </>
             )}
             <button onClick={resetGame} style={btnStyle('#444')}>처음부터</button>
           </div>
